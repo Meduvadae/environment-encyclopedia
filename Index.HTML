@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Medicinal Plant Encyclopedia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Earthy Harmony -->
+    <!-- Application Structure Plan: The SPA is structured as a non-linear "Digital Apothecary." The main view is a filterable grid of plant cards, allowing users to either browse all plants or narrow the selection by medicinal property or conservation status. This task-oriented approach prioritizes user discovery over the report's linear format. Clicking a card opens a modal with tabbed content (Description, Benefits, Safety, etc.), keeping the user in a single context and preventing a long, un-scannable page. This structure is chosen for its superior usability, encouraging exploration and comparison rather than passive reading. -->
+    <!-- Visualization & Content Choices: 1. **Conservation Status Overview (Report Info: Conservation status for each plant) -> Goal: Compare -> Viz: Bar Chart -> Interaction: Hover tooltips -> Justification: Provides an immediate, high-level comparison of the ecological status of all plants, a key theme in the report. -> Library: Chart.js/Canvas.** 2. **Medicinal Properties Profile (Report Info: List of benefits for each plant) -> Goal: Inform/Compare -> Viz: Radar Chart (in detail modal) -> Interaction: Hover tooltips -> Justification: Creates a unique "fingerprint" for each plant, allowing for quick visual assessment of its primary therapeutic strengths (e.g., strong in 'anti-inflammatory', moderate in 'cognitive'). -> Library: Chart.js/Canvas.** 3. **Interactive Grid (Report Info: All plant data) -> Goal: Organize/Filter -> Presentation: HTML/CSS Cards + JS Filtering -> Interaction: Click filters to show/hide cards -> Justification: The core interactive element, enabling users to query the dataset based on their specific interests (e.g., "show me all adaptogens").** CONFIRMED NO SVG/Mermaid used. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF8;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 40vh;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .modal-chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin: 1rem auto;
+            height: 300px;
+            max-height: 40vh;
+        }
+        .active-filter {
+            background-color: #386641 !important;
+            color: #ffffff !important;
+            border-color: #386641 !important;
+        }
+        .modal {
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-content {
+            transition: transform 0.3s ease;
+        }
+        .tab-button.active {
+            border-color: #6A994E;
+            background-color: #EBF5EE;
+            color: #386641;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <h1 class="text-3xl font-bold text-center text-[#386641]">Digital Apothecary</h1>
+            <p class="text-center text-gray-600 mt-1">An Interactive Guide to Medicinal Plants</p>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <section id="filters" class="mb-8 p-6 bg-white rounded-xl shadow-lg">
+            <div class="text-center mb-6">
+                 <h2 class="text-2xl font-semibold text-gray-700">Explore & Filter</h2>
+                 <p class="text-gray-500 mt-1">Select criteria to discover plants with specific properties or conservation needs.</p>
+            </div>
+            <div class="mb-6">
+                <h3 class="font-semibold text-lg mb-3 text-gray-600">Filter by Medicinal Property:</h3>
+                <div id="property-filters" class="flex flex-wrap gap-2 justify-center"></div>
+            </div>
+            <div>
+                <h3 class="font-semibold text-lg mb-3 text-gray-600">Filter by Conservation Status:</h3>
+                <div id="conservation-filters" class="flex flex-wrap gap-2 justify-center"></div>
+            </div>
+        </section>
+
+        <section id="conservation-chart-section" class="mb-12 p-6 bg-white rounded-xl shadow-lg">
+             <div class="text-center mb-4">
+                 <h2 class="text-2xl font-semibold text-gray-700">Conservation at a Glance</h2>
+                 <p class="text-gray-500 mt-1">This chart provides a comparative overview of the conservation status for each plant, highlighting which species are secure and which face threats. Understanding their ecological standing is crucial for promoting sustainable use and protecting these valuable natural resources.</p>
+            </div>
+            <div class="chart-container">
+                <canvas id="conservationChart"></canvas>
+            </div>
+        </section>
+
+        <section id="plant-grid-section">
+             <div class="text-center mb-8">
+                 <h2 class="text-2xl font-semibold text-gray-700">Medicinal Plant Profiles</h2>
+                 <p id="grid-subtitle" class="text-gray-500 mt-1">Click on a card to learn more about each plant.</p>
+            </div>
+            <div id="plant-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            </div>
+        </section>
+
+    </main>
+
+    <div id="plant-modal" class="modal invisible opacity-0 fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4">
+        <div id="modal-content" class="modal-content transform -translate-y-10 bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b border-gray-200">
+                <h2 id="modal-plant-name" class="text-2xl font-bold text-[#386641]"></h2>
+                <button id="close-modal-btn" class="text-gray-500 hover:text-red-600 text-3xl">&times;</button>
+            </div>
+            <div class="overflow-y-auto p-6">
+                <div class="flex flex-col lg:flex-row gap-6">
+                    <div class="lg:w-1/3">
+                        <div id="modal-tabs" class="flex flex-col space-y-2">
+                        </div>
+                    </div>
+                    <div id="modal-tab-content" class="lg:w-2/3 bg-gray-50 p-4 rounded-lg">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const plantData = [
+            {
+                id: 'tulsi',
+                name: 'Tulsi (Holy Basil)',
+                scientificName: 'Ocimum tenuiflorum',
+                icon: '🌿',
+                properties: ['adaptogen', 'antimicrobial', 'anti-inflammatory', 'stress_relief', 'immune_support', 'cognitive_health'],
+                conservation: 'invasive',
+                details: {
+                    description: `An aromatic perennial subshrub, 30-60 cm tall, with hairy stems and green or purplish-green ovate leaves. It emits a distinctive clove-like scent. Known as the "Queen of Herbs," it's revered for its spiritual and therapeutic properties.`,
+                    habitat: `Native to the Indian subcontinent and Southeast Asia. Thrives in moist, lowland tropical climates with full sun and well-drained, rich soil. It is highly adaptable but can become invasive in non-native tropical regions.`,
+                    growth: `A fast-growing perennial, often cultivated as an annual in temperate climates. Reaches maturity in about 70 days. It readily self-seeds, ensuring its continuity in gardens.`,
+                    medicinal_parts: `All parts are used: leaves, stems, flowers, roots, and seeds. The leaves are most commonly used in teas and consumed raw.`,
+                    benefits: `A powerful adaptogen that helps the body manage physical, chemical, and psychological stress. Possesses broad-spectrum antimicrobial, antioxidant, and anti-inflammatory properties. Used for respiratory infections, stress, anxiety, boosting immunity, and metabolic regulation.`,
+                    uses: `**Traditional:** Revered in Ayurveda as an "elixir of life" for promoting health and longevity. Central to Hindu spiritual rituals. **Modern:** Used in herbal teas, supplements for stress relief, and as an active ingredient in natural mouthwash and hand sanitizers.`,
+                    safety: `Generally safe, but may lower blood sugar, requiring caution for diabetics. Insufficient research for use during pregnancy. Product quality can vary, so sourcing from reputable suppliers is crucial.`,
+                    fun_facts: `The name means "The Incomparable One." Its clove-like scent is believed to connect the devotee to the divine while also repelling insects. Unlike caffeine, Tulsi tea is non-addictive.`,
+                    future: `Its adaptogenic properties are key for addressing modern stress-related illnesses. Organic cultivation offers sustainable solutions for food security and environmental health.`,
+                },
+                radarScores: { anti_inflammatory: 4, antioxidant: 4, antimicrobial: 5, stress_relief: 5, immune_support: 4, cognitive_health: 3 }
+            },
+            {
+                id: 'ashwagandha',
+                name: 'Ashwagandha',
+                scientificName: 'Withania somnifera',
+                icon: '🌱',
+                properties: ['adaptogen', 'anti-inflammatory', 'stress_relief', 'cognitive_health', 'reproductive_health'],
+                conservation: 'endangered',
+                details: {
+                    description: `A small, woody evergreen shrub, 90-150 cm tall, with light green, oval leaves and small, bell-shaped, yellow-green flowers. It produces small, reddish-orange berries. The name means "smell of the horse," referring to its root's scent and strength-giving properties.`,
+                    habitat: `Native to India, North Africa, and the Middle East. It's highly drought-tolerant and thrives in dry, sunny areas with well-draining soil.`,
+                    growth: `A perennial herb that can live for over 200 years. Often grown as an annual in temperate climates. It propagates easily from seeds.`,
+                    medicinal_parts: `Primarily the roots, but leaves and berries are also used. Both roots and leaves are dried and powdered for supplements.`,
+                    benefits: `A premier adaptogen for reducing stress and anxiety. Enhances memory, cognitive function, muscle growth, and both male and female reproductive health. Possesses anti-inflammatory and potential anti-cancer properties.`,
+                    uses: `**Traditional:** A cornerstone of Ayurveda used as a tonic (Rasayana) for longevity, vitality, and treating nervous exhaustion. **Modern:** Widely available as a supplement for stress, cognitive support, and athletic performance.`,
+                    safety: `Likely unsafe during pregnancy. May interact with sedative, thyroid, and diabetes medications. Can increase immune activity, so caution is advised for those with autoimmune diseases. Rare cases of liver injury have been reported.`,
+                    fun_facts: `The Latin name "somnifera" means "sleep-inducing." The fruit, rich in saponins, was traditionally used as a soap substitute.`,
+                    future: `Poised for expansion in integrative medicine for stress and cognitive health. Biotechnological approaches are crucial for its conservation and sustainable cultivation.`,
+                },
+                radarScores: { anti_inflammatory: 4, antioxidant: 3, antimicrobial: 2, stress_relief: 5, immune_support: 3, cognitive_health: 4, reproductive_health: 5 }
+            },
+            {
+                id: 'aloe_vera',
+                name: 'Aloe Vera',
+                scientificName: 'Aloe barbadensis miller',
+                icon: '🌵',
+                properties: ['anti-inflammatory', 'digestive_health', 'skin_health'],
+                conservation: 'least_concern',
+                details: {
+                    description: `A succulent perennial with thick, fleshy, grey-green leaves arranged in a rosette. The leaves contain a clear gel used for medicinal and cosmetic purposes. The edges of the leaves have small, sharp spines.`,
+                    habitat: `Adapted to arid climates, found in Africa, India, and other subtropical regions. Prefers full sun and loose, dry, sandy soil. Highly drought-tolerant.`,
+                    growth: `A perennial succulent with a moderate growth rate, reaching maturity in 3-4 years. Propagates by sending out "pups" from its base.`,
+                    medicinal_parts: `The clear inner gel is used topically. The outer leaf pulp (latex) can be processed for oral use as a laxative.`,
+                    benefits: `Topically, the gel is excellent for healing first- and second-degree burns, cuts, and soothing skin inflammation like psoriasis. Orally, the latex has laxative properties and is used for constipation.`,
+                    uses: `**Traditional:** Used for thousands of years by cultures like ancient Egyptians for skin health and wound healing. **Modern:** A key ingredient in skincare, sunscreens, and after-sun lotions. Also found in beverages and supplements for digestive health.`,
+                    safety: `Topical use is safe. Oral use of non-decolorized whole leaf extract is linked to cancer risk in animal studies. The latex can cause stomach upset.`,
+                    fun_facts: `The name "Aloe" comes from the Arabic "Alloeh," meaning "shining bitter substance." There are over 450 species of Aloe.`,
+                    future: `Remarkably, Aloe Vera's cellulose structure is being used as a natural, edible scaffold for growing cultured (lab-grown) meat, a major innovation in sustainable food technology.`,
+                },
+                radarScores: { anti_inflammatory: 4, antioxidant: 2, skin_health: 5, digestive_health: 4 }
+            },
+            {
+                id: 'neem',
+                name: 'Neem',
+                scientificName: 'Azadirachta indica',
+                icon: '🌳',
+                properties: ['antimicrobial', 'anti-inflammatory', 'skin_health', 'digestive_health'],
+                conservation: 'least_concern',
+                details: {
+                    description: `A fast-growing evergreen tree, 15-20 meters tall, with a dense crown and pinnate leaves. It produces small, fragrant white flowers and olive-like fruit. The tree has a rough, dark gray bark.`,
+                    habitat: `Native to the Indian subcontinent. It is highly drought-resistant and thrives in arid and semi-arid regions, but has become invasive in some parts of Africa.`,
+                    growth: `A fast-growing and long-lived evergreen tree, capable of surviving for over 200 years.`,
+                    medicinal_parts: `All parts are used: leaves, bark, seeds, and oil. The twigs are traditionally used as toothbrushes.`,
+                    benefits: `Possesses powerful antibacterial, antiviral, and antifungal properties. Widely used for skin disorders (including scabies and lice), dental care, and digestive issues. Rich in antioxidants.`,
+                    uses: `**Traditional:** Known in parts of Africa as 'the tree that cures forty diseases.' Integral to Ayurveda for a vast range of ailments. **Modern:** Neem oil is a popular organic pesticide. Extracts are used in cosmetics, soaps, toothpaste, and pet care products.`,
+                    safety: `Prolonged internal use may cause irritation to the liver and kidneys. Moderation is advised.`,
+                    fun_facts: `The fruit is a food source for birds but poisonous to mammals. The scabies mite has shown no resistance to Neem.`,
+                    future: `Its role as a natural, eco-friendly pesticide is crucial for sustainable agriculture. Ongoing research into its potential in cancer and diabetes management is promising.`,
+                },
+                radarScores: { anti_inflammatory: 3, antioxidant: 3, antimicrobial: 5, skin_health: 5, digestive_health: 3 }
+            },
+            {
+                id: 'amla',
+                name: 'Amla (Indian Gooseberry)',
+                scientificName: 'Phyllanthus emblica',
+                icon: '🍈',
+                properties: ['antioxidant', 'immune_support', 'digestive_health', 'hair_health', 'stress_relief'],
+                conservation: 'least_concern',
+                details: {
+                    description: `A medium-sized deciduous tree with light green, pinnate leaves and small, greenish-yellow flowers. Its fruit is spherical, green-yellow, and known for being one of the richest natural sources of Vitamin C.`,
+                    habitat: `Grows wild throughout tropical India and is cultivated across East Asia. It is highly tolerant of drought and poor soil, and is fire-resistant.`,
+                    growth: `A slow-growing perennial tree that can reach up to 18 meters in height.`,
+                    medicinal_parts: `Primarily the fruit. The leaves, seeds, bark, and roots are also used for their high tannin content.`,
+                    benefits: `An extremely potent antioxidant and rejuvenator (Rasayana). Boosts immunity, aids digestion, promotes hair growth, reduces stress, and enhances memory. Also used for eye care and respiratory health.`,
+                    uses: `**Traditional:** Sacred in Ayurveda, believed to impart anti-aging effects. A key ingredient in the tonic 'triphala'. **Modern:** Widely used in shampoos, conditioners, and hair oils. Amla juice is a popular health beverage.`,
+                    safety: `Generally considered safe with no known hazards, but professional medical advice is always recommended before medicinal use.`,
+                    fun_facts: `Amla juice has nearly 20 times more Vitamin C than orange juice. The tree's wood is durable in water and was used to build wells.`,
+                    future: `Its role in nutraceuticals and functional foods is growing. Ecologically, it's a key pioneer species used in reforestation and to restore degraded, alkaline soils.`,
+                },
+                radarScores: { anti_inflammatory: 3, antioxidant: 5, immune_support: 5, digestive_health: 4, hair_health: 5 }
+            },
+            {
+                id: 'brahmi',
+                name: 'Brahmi',
+                scientificName: 'Bacopa monnieri',
+                icon: '💧',
+                properties: ['cognitive_health', 'stress_relief', 'anti-inflammatory', 'antioxidant'],
+                conservation: 'least_concern',
+                details: {
+                    description: `A perennial, creeping succulent herb that thrives in wet, marshy areas. It has thick, oblong leaves and small white or purple flowers. It's a popular plant for aquariums.`,
+                    habitat: `Widely distributed in tropical regions, common in marshlands, mud flats, and along the edges of water channels in Asia and the Americas.`,
+                    growth: `A fast-growing perennial creeper, reaching about 0.3 meters in height. Easily propagated by stem cuttings.`,
+                    medicinal_parts: `The entire plant (roots, stems, leaves) is used. The leaves are sometimes eaten in salads.`,
+                    benefits: `A renowned "brain tonic" or nootropic. It enhances memory, cognitive function, and concentration while reducing anxiety and stress. Also possesses antioxidant and anti-inflammatory properties.`,
+                    uses: `**Traditional:** A key Ayurvedic herb for treating nervous system disorders, epilepsy, and insanity, and as a tonic to slow aging. **Modern:** Available in supplements for cognitive enhancement and memory support. Being studied for its potential in treating neurodegenerative diseases like Alzheimer's.`,
+                    safety: `Generally safe. May cause mild gastrointestinal upset in rare cases. Caution is advised during pregnancy.`,
+                    fun_facts: `The name "Brahmi" is derived from "Brahma," the Hindu creator god, reflecting its esteemed status. Historically, the name has also been used for Gotu Kola.`,
+                    future: `Its role as a natural, calming cognitive enhancer positions it for major growth in mental health and wellness. Further research could lead to targeted therapies for ADHD and depression.`,
+                },
+                radarScores: { anti_inflammatory: 3, antioxidant: 4, stress_relief: 4, cognitive_health: 5 }
+            },
+            {
+                id: 'giloy',
+                name: 'Giloy',
+                scientificName: 'Tinospora cordifolia',
+                icon: '🌿',
+                properties: ['immune_support', 'anti-inflammatory', 'antioxidant', 'stress_relief', 'digestive_health'],
+                conservation: 'not_evaluated',
+                details: {
+                    description: `A large, deciduous climbing vine with distinctive heart-shaped leaves and warty, studded stems. It often produces long, thread-like aerial roots. It is dioecious, with male and female flowers on separate plants.`,
+                    habitat: `Native to tropical India and found across South and Southeast Asia. It is highly adaptable, growing in a wide range of soils and climates.`,
+                    growth: `A fast-growing perennial vine that can climb up to 15 meters. Easily propagated from stem cuttings.`,
+                    medicinal_parts: `All parts are used: leaves, stems, fruits, and roots.`,
+                    benefits: `A potent immunomodulator, it enhances the function of white blood cells and stimulates the immune system. Also has strong antioxidant, anti-inflammatory, anti-allergic, and stress-relieving properties. Used for digestive health and liver support.`,
+                    uses: `**Traditional:** Known as "Amrita" (root of immortality) in Ayurveda. Used for a vast range of ailments, including fevers, jaundice, and diabetes. **Modern:** Incorporated into many value-added products like herbal teas, biscuits, and functional beverages for its immune-boosting benefits.`,
+                    safety: `May cause the immune system to become overactive, so it should be avoided by those with autoimmune diseases. Can lower blood sugar. Recent studies suggest potential liver damage with excessive use.`,
+                    fun_facts: `Its Ayurvedic name, "Guduchi," means "one which protects the entire body." It's also called a "swell magnet," implying it has beneficial effects even in unfavorable conditions.`,
+                    future: `Its potent immunomodulatory effects are key for future research, especially for developing therapies for immune-related disorders. Standardization of extracts is needed for safe commercialization.`,
+                },
+                radarScores: { anti_inflammatory: 4, antioxidant: 4, immune_support: 5, stress_relief: 3, digestive_health: 3 }
+            },
+            {
+                id: 'shatavari',
+                name: 'Shatavari',
+                scientificName: 'Asparagus racemosus',
+                icon: '🌾',
+                properties: ['reproductive_health', 'digestive_health', 'anti-inflammatory', 'immune_support'],
+                conservation: 'endangered',
+                details: {
+                    description: `A perennial climbing plant that can grow up to 7 meters. It is a species of asparagus with tuberous roots that are the primary medicinal part.`,
+                    habitat: `Widely distributed across tropical and subtropical regions of Asia, Australia, and Africa. Prefers gravelly, rocky soils in piedmont plains.`,
+                    growth: `A slow-growing perennial climber. The tubers are harvested in autumn and can be replanted in spring.`,
+                    medicinal_parts: `Primarily the root, but the rhizome and whole plant are also used. The tender young shoots are edible.`,
+                    benefits: `The premier Ayurvedic herb for female reproductive health, used for infertility, loss of libido, menopausal issues, and to promote lactation. Also used for digestive issues like ulcers and hyperacidity, and has anti-inflammatory properties.`,
+                    uses: `**Traditional:** Name means 'she who possesses a hundred husbands,' alluding to its fertility-enhancing properties. Used as a general and reproductive tonic. **Modern:** Research is validating its antioxidant, antibacterial, and immune-modulating effects. Tissue culture is being used for sustainable cultivation.`,
+                    safety: `Not enough information is available to be certain of its safety, particularly during pregnancy and breastfeeding. May interact with lithium.`,
+                    fun_facts: `The squeezed root was traditionally used for washing clothes. The plant is a hermaphrodite, pollinated by bees.`,
+                    future: `Its endangered status makes sustainable cultivation via tissue culture and farming essential. Further research into its immunomodulatory activity could lead to new nutraceuticals.`,
+                },
+                radarScores: { anti_inflammatory: 3, immune_support: 3, digestive_health: 4, reproductive_health: 5 }
+            },
+            {
+                id: 'turmeric',
+                name: 'Turmeric',
+                scientificName: 'Curcuma longa',
+                icon: '🌶️',
+                properties: ['anti-inflammatory', 'antioxidant', 'digestive_health', 'skin_health', 'cognitive_health'],
+                conservation: 'not_evaluated',
+                details: {
+                    description: `A perennial herbaceous plant from the ginger family. It grows from fleshy underground rhizomes, which have a bold orange-yellow color and are ground to make the famous spice. The plant has large, paddle-shaped leaves.`,
+                    habitat: `Native to South and Southeast Asia. It thrives in hot, humid climates with rich, loamy soil and filtered sunlight.`,
+                    growth: `A perennial that grows from rhizomes, reaching 90-120 cm tall. It goes dormant in winter in cooler climates.`,
+                    medicinal_parts: `The tuberous rhizomes are the primary medicinal and culinary part.`,
+                    benefits: `Its main active compound, curcumin, is a powerful anti-inflammatory and antioxidant. Used to ease joint pain and arthritis, support digestion, enhance brain health and memory, and promote healthy skin.`,
+                    uses: `**Traditional:** A staple of Ayurveda and Chinese medicine for over 4,000 years, used to purify blood and treat inflammation. **Modern:** A globally popular spice and health supplement. Used in skincare for its brightening effects and as a natural dye.`,
+                    safety: `Generally safe in culinary amounts. High-dose supplements can cause GI upset and may thin the blood. Lead contamination has been a major public health issue in turmeric from some regions.`,
+                    fun_facts: `Often called the "golden spice." It's a close cousin of ginger. Paper tinged with turmeric is a traditional chemical test for alkalinity.`,
+                    future: `The primary focus is on enhancing the bioavailability of curcumin using adjuvants (like black pepper) and nanoparticle delivery systems, which could unlock its full therapeutic potential.`,
+                },
+                radarScores: { anti_inflammatory: 5, antioxidant: 5, digestive_health: 4, skin_health: 4, cognitive_health: 3 }
+            },
+            {
+                id: 'guggul',
+                name: 'Guggul',
+                scientificName: 'Commiphora mukul',
+                icon: '✨',
+                properties: ['anti-inflammatory', 'cholesterol_management', 'weight_management', 'skin_health'],
+                conservation: 'critically_endangered',
+                details: {
+                    description: `A small, thorny, deciduous shrub or tree that grows in arid regions. It has thin, papery bark and produces a fragrant, yellowish gum resin known as guggulipid.`,
+                    habitat: `Native to the arid, rocky regions of the Indian subcontinent, especially Rajasthan and Gujarat. It is highly adapted to extreme heat and low rainfall.`,
+                    growth: `A very slow-growing perennial shrub, taking 8-10 years to mature for resin tapping.`,
+                    medicinal_parts: `The gum resin, which is secreted from incisions in the bark.`,
+                    benefits: `Best known for its cholesterol-reducing and anti-inflammatory properties. Used to treat arthritis and nodulocystic acne. Also used in weight management and for cardiovascular health.`,
+                    uses: `**Traditional:** Used in Ayurveda for over 2,500 years, especially for treating atherosclerosis ("hardening of the arteries"). **Modern:** Used in formulations for cholesterol control, joint pain, and acne.`,
+                    safety: `Can cause side effects like skin rash and stomach upset. May interact with blood thinners and thyroid medications. Its use during pregnancy is advised against.`,
+                    fun_facts: `The word "Guggul" in Sanskrit means "protects from disease." The resin is often used as incense.`,
+                    future: `Its critically endangered status makes conservation and sustainable harvesting paramount. Research into its anti-cancer potential is a key area for future applications.`,
+                },
+                radarScores: { anti_inflammatory: 5, skin_health: 4, cholesterol_management: 5, weight_management: 3 }
+            },
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const propertyFiltersContainer = document.getElementById('property-filters');
+            const conservationFiltersContainer = document.getElementById('conservation-filters');
+            const plantGrid = document.getElementById('plant-grid');
+            const modal = document.getElementById('plant-modal');
+            const modalContent = document.getElementById('modal-content');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            const gridSubtitle = document.getElementById('grid-subtitle');
+
+            let activePropertyFilters = new Set();
+            let activeConservationFilters = new Set();
+            let conservationChartInstance = null;
+            let plantRadarChartInstance = null;
+
+            const propertyLabels = {
+                adaptogen: 'Adaptogen',
+                antimicrobial: 'Antimicrobial',
+                anti_inflammatory: 'Anti-inflammatory',
+                stress_relief: 'Stress Relief',
+                immune_support: 'Immune Support',
+                cognitive_health: 'Cognitive Health',
+                reproductive_health: 'Reproductive Health',
+                digestive_health: 'Digestive Health',
+                skin_health: 'Skin Health',
+                hair_health: 'Hair Health',
+                antioxidant: 'Antioxidant',
+                cholesterol_management: 'Cholesterol',
+                weight_management: 'Weight Loss'
+            };
+
+            const conservationLabels = {
+                invasive: 'Invasive',
+                endangered: 'Endangered',
+                least_concern: 'Least Concern',
+                not_evaluated: 'Not Evaluated',
+                critically_endangered: 'Critically Endangered'
+            };
+            
+            const conservationColors = {
+                least_concern: 'rgba(75, 192, 192, 0.6)',
+                not_evaluated: 'rgba(201, 203, 207, 0.6)',
+                endangered: 'rgba(255, 159, 64, 0.6)',
+                critically_endangered: 'rgba(255, 99, 132, 0.6)',
+                invasive: 'rgba(153, 102, 255, 0.6)',
+            };
+            
+            const conservationBorderColors = {
+                 least_concern: 'rgba(75, 192, 192, 1)',
+                not_evaluated: 'rgba(201, 203, 207, 1)',
+                endangered: 'rgba(255, 159, 64, 1)',
+                critically_endangered: 'rgba(255, 99, 132, 1)',
+                invasive: 'rgba(153, 102, 255, 1)',
+            };
+
+
+            function setupFilters() {
+                const allProperties = new Set(plantData.flatMap(p => p.properties));
+                const allConservations = new Set(plantData.map(p => p.conservation));
+
+                const createFilterButton = (container, value, label, type) => {
+                    const button = document.createElement('button');
+                    button.textContent = label;
+                    button.dataset.filter = value;
+                    button.dataset.type = type;
+                    button.className = 'px-4 py-2 border border-gray-300 rounded-full text-sm text-gray-700 hover:bg-gray-100 transition';
+                    button.addEventListener('click', toggleFilter);
+                    container.appendChild(button);
+                };
+
+                allProperties.forEach(prop => createFilterButton(propertyFiltersContainer, prop, propertyLabels[prop], 'property'));
+                allConservations.forEach(cons => createFilterButton(conservationFiltersContainer, cons, conservationLabels[cons], 'conservation'));
+            }
+
+            function renderPlantGrid() {
+                plantGrid.innerHTML = '';
+                plantData.forEach(plant => {
+                    const card = document.createElement('div');
+                    card.className = 'plant-card bg-white rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden';
+                    card.dataset.id = plant.id;
+                    card.dataset.properties = plant.properties.join(' ');
+                    card.dataset.conservation = plant.conservation;
+                    
+                    const conservationColorClass = {
+                        'least_concern': 'bg-green-100 text-green-800',
+                        'not_evaluated': 'bg-gray-100 text-gray-800',
+                        'endangered': 'bg-yellow-100 text-yellow-800',
+                        'critically_endangered': 'bg-red-100 text-red-800',
+                        'invasive': 'bg-purple-100 text-purple-800'
+                    }[plant.conservation];
+
+                    card.innerHTML = `
+                        <div class="p-5 flex flex-col items-center text-center">
+                            <div class="text-4xl mb-2">${plant.icon}</div>
+                            <h3 class="text-lg font-semibold text-gray-800">${plant.name}</h3>
+                            <p class="text-sm text-gray-500 italic">${plant.scientificName}</p>
+                             <div class="mt-3 px-2 py-1 text-xs font-medium rounded-full ${conservationColorClass}">
+                                ${conservationLabels[plant.conservation]}
+                            </div>
+                        </div>
+                    `;
+                    card.addEventListener('click', () => openModal(plant.id));
+                    plantGrid.appendChild(card);
+                });
+            }
+
+            function toggleFilter(e) {
+                const button = e.target;
+                const filter = button.dataset.filter;
+                const type = button.dataset.type;
+
+                if (type === 'property') {
+                    if (activePropertyFilters.has(filter)) {
+                        activePropertyFilters.delete(filter);
+                        button.classList.remove('active-filter');
+                    } else {
+                        activePropertyFilters.add(filter);
+                        button.classList.add('active-filter');
+                    }
+                } else if (type === 'conservation') {
+                    if (activeConservationFilters.has(filter)) {
+                        activeConservationFilters.delete(filter);
+                        button.classList.remove('active-filter');
+                    } else {
+                        activeConservationFilters.add(filter);
+                        button.classList.add('active-filter');
+                    }
+                }
+                applyGridFilters();
+            }
+
+            function applyGridFilters() {
+                let visibleCount = 0;
+                document.querySelectorAll('.plant-card').forEach(card => {
+                    const properties = card.dataset.properties.split(' ');
+                    const conservation = card.dataset.conservation;
+
+                    const propertyMatch = activePropertyFilters.size === 0 || [...activePropertyFilters].every(filter => properties.includes(filter));
+                    const conservationMatch = activeConservationFilters.size === 0 || activeConservationFilters.has(conservation);
+
+                    if (propertyMatch && conservationMatch) {
+                        card.classList.remove('hidden');
+                        visibleCount++;
+                    } else {
+                        card.classList.add('hidden');
+                    }
+                });
+                gridSubtitle.textContent = `Showing ${visibleCount} of ${plantData.length} plants. Click a card to learn more.`;
+
+            }
+
+            function openModal(plantId) {
+                const plant = plantData.find(p => p.id === plantId);
+                if (!plant) return;
+
+                document.getElementById('modal-plant-name').textContent = plant.name;
+                
+                const modalTabs = document.getElementById('modal-tabs');
+                const tabContent = document.getElementById('modal-tab-content');
+                modalTabs.innerHTML = '';
+                
+                const tabs = Object.keys(plant.details);
+                
+                tabs.forEach((tabKey, index) => {
+                    const button = document.createElement('button');
+                    button.className = 'tab-button w-full text-left px-4 py-2 rounded-md border border-transparent hover:bg-gray-100 transition';
+                    button.textContent = tabKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    button.dataset.tab = tabKey;
+                    
+                    button.addEventListener('click', () => {
+                        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                        button.classList.add('active');
+                        updateTabContent(plant, tabKey);
+                    });
+                    
+                    modalTabs.appendChild(button);
+                    
+                    if (index === 0) {
+                        button.classList.add('active');
+                        updateTabContent(plant, tabKey);
+                    }
+                });
+
+                modal.classList.remove('invisible', 'opacity-0');
+                modalContent.classList.remove('-translate-y-10');
+            }
+            
+            function updateTabContent(plant, tabKey) {
+                const tabContentContainer = document.getElementById('modal-tab-content');
+                let contentHTML = `<h3 class="text-xl font-semibold mb-3 text-gray-800">${tabKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</h3>`;
+                
+                if (tabKey === 'benefits') {
+                    contentHTML += `<div class="prose prose-sm max-w-none">${plant.details[tabKey]}</div>`;
+                    contentHTML += `<div class="modal-chart-container"><canvas id="plantRadarChart"></canvas></div>`;
+                } else {
+                    contentHTML += `<div class="prose prose-sm max-w-none">${plant.details[tabKey]}</div>`;
+                }
+
+                tabContentContainer.innerHTML = contentHTML;
+
+                if (tabKey === 'benefits') {
+                    renderPlantRadarChart(plant);
+                }
+            }
+
+
+            function closeModal() {
+                modal.classList.add('invisible', 'opacity-0');
+                modalContent.classList.add('-translate-y-10');
+            }
+
+            function renderConservationChart() {
+                const ctx = document.getElementById('conservationChart').getContext('2d');
+                if (conservationChartInstance) {
+                    conservationChartInstance.destroy();
+                }
+
+                const labels = plantData.map(p => p.name);
+                const data = plantData.map(p => {
+                    const statusOrder = { 'critically_endangered': 5, 'endangered': 4, 'invasive': 3, 'least_concern': 2, 'not_evaluated': 1 };
+                    return statusOrder[p.conservation] || 0;
+                });
+
+                conservationChartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Conservation Status',
+                            data: data,
+                            backgroundColor: plantData.map(p => conservationColors[p.conservation]),
+                            borderColor: plantData.map(p => conservationBorderColors[p.conservation]),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value, index, values) {
+                                        const labels = { 1: 'Not Eval.', 2: 'Least Concern', 3: 'Invasive', 4: 'Endangered', 5: 'Crit. End.' };
+                                        return labels[value] || '';
+                                    }
+                                }
+                            },
+                             y: {
+                                ticks: {
+                                    autoSkip: false,
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return conservationLabels[plantData[context.dataIndex].conservation];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            function renderPlantRadarChart(plant) {
+                const radarCtx = document.getElementById('plantRadarChart')?.getContext('2d');
+                if (!radarCtx) return;
+
+                if(plantRadarChartInstance){
+                    plantRadarChartInstance.destroy();
+                }
+
+                const labels = Object.keys(plant.radarScores);
+                const data = Object.values(plant.radarScores);
+
+                plantRadarChartInstance = new Chart(radarCtx, {
+                    type: 'radar',
+                    data: {
+                        labels: labels.map(l => propertyLabels[l] || l.replace(/_/g, ' ')),
+                        datasets: [{
+                            label: plant.name,
+                            data: data,
+                            fill: true,
+                            backgroundColor: 'rgba(56, 102, 65, 0.2)',
+                            borderColor: 'rgb(56, 102, 65)',
+                            pointBackgroundColor: 'rgb(56, 102, 65)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgb(56, 102, 65)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                beginAtZero: true,
+                                max: 5,
+                                stepSize: 1,
+                                angleLines: {
+                                    color: 'rgba(0, 0, 0, 0.1)'
+                                },
+                                grid: {
+                                    color: 'rgba(0, 0, 0, 0.1)'
+                                },
+                                pointLabels: {
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+            }
+
+            closeModalBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+
+            setupFilters();
+            renderPlantGrid();
+            renderConservationChart();
+        });
+    </script>
+</body>
+</html>
